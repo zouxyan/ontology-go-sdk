@@ -237,6 +237,18 @@ func (this *ClientMgr) GetMerkleProof(txHash string) (*sdkcom.MerkleProof, error
 	return utils.GetMerkleProof(data)
 }
 
+func (this *ClientMgr) GetMptProof(key []byte, height uint32) (*sdkcom.MPTProof, error) {
+	client := this.getClient()
+	if client == nil {
+		return nil, fmt.Errorf("don't have available client of ontology")
+	}
+	data, err := client.getMptProof(this.getNextQid(), key, height)
+	if err != nil {
+		return nil, err
+	}
+	return utils.GetMptProof(data)
+}
+
 func (this *ClientMgr) GetMemPoolTxState(txHash string) (*sdkcom.MemPoolTxState, error) {
 	client := this.getClient()
 	if client == nil {

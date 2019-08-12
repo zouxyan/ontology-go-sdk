@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/ontio/ontology/common"
 	"math/big"
+	"github.com/ontio/ontology/rlp"
 )
 
 var (
@@ -245,6 +246,10 @@ type MerkleProof struct {
 	CurBlockRoot     string
 	CurBlockHeight   uint32
 	TargetHashes     []string
+}
+
+type MPTProof struct {
+	MPTProof []rlp.RawValue
 }
 
 type BlockTxHashes struct {

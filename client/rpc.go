@@ -146,6 +146,10 @@ func (this *RpcClient) getMerkleProof(qid, txHash string) ([]byte, error) {
 	return this.sendRpcRequest(qid, RPC_GET_MERKLE_PROOF, []interface{}{txHash})
 }
 
+func (this *RpcClient) getMptProof(qid string, key []byte, height uint32) ([]byte, error) {
+	return this.sendRpcRequest(qid, RPC_GET_MPT_PROOF, []interface{}{hex.EncodeToString(key), height})
+}
+
 func (this *RpcClient) getMemPoolTxState(qid, txHash string) ([]byte, error) {
 	return this.sendRpcRequest(qid, RPC_GET_MEM_POOL_TX_STATE, []interface{}{txHash})
 }

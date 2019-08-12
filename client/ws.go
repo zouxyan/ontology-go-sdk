@@ -657,6 +657,10 @@ func (this *WSClient) getMerkleProof(qid, txHash string) ([]byte, error) {
 	return this.sendSyncWSRequest(qid, WS_ACTION_GET_MERKLE_PROOF, map[string]interface{}{"Hash": txHash})
 }
 
+func (this *WSClient) getMptProof(qid string, key []byte, height uint32) ([]byte, error) {
+	return nil, nil
+}
+
 func (this *WSClient) getSmartContractEvent(qid, txHash string) ([]byte, error) {
 	return this.sendSyncWSRequest(qid, WS_ACTION_GET_SMARTCONTRACT_BY_HASH, map[string]interface{}{"Hash": txHash})
 }

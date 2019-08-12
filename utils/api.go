@@ -173,6 +173,15 @@ func GetMerkleProof(data []byte) (*sdkcom.MerkleProof, error) {
 	return proof, nil
 }
 
+func GetMptProof(data []byte) (*sdkcom.MPTProof, error) {
+	proof := &sdkcom.MPTProof{}
+	err := json.Unmarshal(data, proof)
+	if err != nil {
+		return nil, fmt.Errorf("json.Unmarshal error:%s", err)
+	}
+	return proof, nil
+}
+
 func GetBlockTxHashes(data []byte) (*sdkcom.BlockTxHashes, error) {
 	blockTxHashesStr := &sdkcom.BlockTxHashesStr{}
 	err := json.Unmarshal(data, &blockTxHashesStr)

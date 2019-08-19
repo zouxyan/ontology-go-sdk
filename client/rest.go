@@ -155,7 +155,7 @@ func (this RestClient) getMerkleProof(qid, txHash string) ([]byte, error) {
 	return this.sendRestGetRequest(reqPath)
 }
 
-func (this *RestClient) getMptProof(qid string, key []byte, height uint32) ([]byte, error) {
+func (this *RestClient) getCrossStatesProof(qid string, height uint32, key []byte) ([]byte, error) {
 	return nil, nil
 }
 

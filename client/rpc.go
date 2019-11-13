@@ -189,7 +189,7 @@ func (this *RpcClient) sendRpcRequest(qid, method string, params []interface{}) 
 	}
 	resp, err := this.httpClient.Post(this.addr, "application/json", bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("http post request:%s error:%s", data, err)
+		return nil, PostErr{fmt.Errorf("http post request:%s error:%s", data, err)}
 	}
 	defer resp.Body.Close()
 
@@ -206,4 +206,12 @@ func (this *RpcClient) sendRpcRequest(qid, method string, params []interface{}) 
 		return nil, fmt.Errorf("JsonRpcResponse error code:%d desc:%s result:%s", rpcRsp.Error, rpcRsp.Desc, rpcRsp.Result)
 	}
 	return rpcRsp.Result, nil
+}
+
+type PostErr struct {
+	Err error
+}
+
+func (err PostErr) Error() string {
+	return err.Err.Error()
 }

@@ -159,6 +159,10 @@ func (this *RestClient) getCrossStatesProof(qid string, height uint32, key []byt
 	return nil, nil
 }
 
+func (this *RestClient) getCrossChainMsg(qid string, height uint32) ([]byte, error) {
+	return nil, nil
+}
+
 func (this *RestClient) getMemPoolTxState(qid, txHash string) ([]byte, error) {
 	reqPath := GET_MEMPOOL_TXSTATE + txHash
 	return this.sendRestGetRequest(reqPath)

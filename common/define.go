@@ -247,11 +247,6 @@ type MerkleProof struct {
 	TargetHashes     []string
 }
 
-type CrossStatesProof struct {
-	Type      string
-	AuditPath string
-}
-
 type BlockTxHashes struct {
 	Hash         common.Uint256
 	Height       uint32

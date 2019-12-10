@@ -20,13 +20,15 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	sdkcom "github.com/ontio/ontology-go-sdk/common"
 	"github.com/ontio/ontology-go-sdk/utils"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/types"
-	"sync/atomic"
-	"time"
+	bcommon "github.com/ontio/ontology/http/base/common"
 )
 
 type ClientMgr struct {
@@ -237,7 +239,7 @@ func (this *ClientMgr) GetMerkleProof(txHash string) (*sdkcom.MerkleProof, error
 	return utils.GetMerkleProof(data)
 }
 
-func (this *ClientMgr) GetCrossStatesProof(height uint32, key []byte) (*sdkcom.CrossStatesProof, error) {
+func (this *ClientMgr) GetCrossStatesProof(height uint32, key []byte) (*bcommon.CrossStatesProof, error) {
 	client := this.getClient()
 	if client == nil {
 		return nil, fmt.Errorf("don't have available client of ontology")
@@ -247,6 +249,18 @@ func (this *ClientMgr) GetCrossStatesProof(height uint32, key []byte) (*sdkcom.C
 		return nil, err
 	}
 	return utils.GetCrossStatesProof(data)
+}
+
+func (this *ClientMgr) GetCrossChainMsg(height uint32) (string, error) {
+	client := this.getClient()
+	if client == nil {
+		return "", fmt.Errorf("don't have available client of ontology")
+	}
+	data, err := client.getCrossChainMsg(this.getNextQid(), height)
+	if err != nil {
+		return "", err
+	}
+	return utils.GetCrossChainMsg(data)
 }
 
 func (this *ClientMgr) GetMemPoolTxState(txHash string) (*sdkcom.MemPoolTxState, error) {

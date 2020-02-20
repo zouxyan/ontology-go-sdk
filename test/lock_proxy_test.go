@@ -1,16 +1,15 @@
 package test
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	mcutils "github.com/ontio/multi-chain/native/service/utils"
 	"github.com/ontio/ontology-crypto/keypair"
 	. "github.com/ontio/ontology-go-sdk"
 	"github.com/ontio/ontology/common"
-	"github.com/ontio/ontology/common/serialization"
-	olp "github.com/ontio/ontology/smartcontract/service/native/cross_chain/ont_lock_proxy"
+	"github.com/ontio/ontology/common/constants"
 	"github.com/ontio/ontology/smartcontract/service/native/utils"
+	"math/big"
 	"testing"
 	"time"
 )
@@ -117,24 +116,29 @@ func Test_GetBalanceOf_Wallet(t *testing.T) {
 		}
 		fmt.Printf("walelt index = %d, ong balance of %s = %d\n", i, hex.EncodeToString(acctI.Address[:]), res)
 	}
-	Test_GetBalanceOf_OntLockProxyContract(t)
+	Test_GetBalanceOf_LockProxyContract(t)
 }
 
-func Test_GetBalanceOf_OntLockProxyContract(t *testing.T) {
+func Test_GetBalanceOf_LockProxyContract(t *testing.T) {
 	Init()
 
-	res, err := testOntSdk.Native.Ont.BalanceOf(utils.OntLockContractAddress)
+	res, err := testOntSdk.Native.Ont.BalanceOf(utils.LockProxyContractAddress)
 	if err != nil {
 		t.Errorf("get balance of ontlockContract err %s\n", err)
 	}
-	fmt.Printf("balance of ontLockProxyContract = %s = %d\n", hex.EncodeToString(utils.OntLockContractAddress[:]), res)
+	fmt.Printf("ont balance of LockProxyContract = %s = %d\n", hex.EncodeToString(utils.LockProxyContractAddress[:]), res)
+	res, err = testOntSdk.Native.Ong.BalanceOf(utils.LockProxyContractAddress)
+	if err != nil {
+		t.Errorf("get balance of ontlockContract err %s\n", err)
+	}
+	fmt.Printf("ong balance of LockProxyContract = %s = %d\n", hex.EncodeToString(utils.LockProxyContractAddress[:]), res)
 }
 
-func TestOnt_Lock(t *testing.T) {
+func Test_Lock(t *testing.T) {
 	Init()
 	toAddressBytes, _ := hex.DecodeString("709c937270e1d5a490718a2b4a230186bdd06a02")
-	//toAddressBytes, _ := hex.DecodeString("2186fe74983e0016359c7c1b9063448fc8813b87")
-	txHash, err := testOntSdk.Native.OntLock.Lock(testGasPrice, testGasLimit, nil, utils.OntContractAddress, testDefAcc, 0, toAddressBytes, 2)
+	txHash, err := testOntSdk.Native.LockProxy.Lock(testGasPrice, testGasLimit, nil, utils.OntContractAddress, testDefAcc, 0, toAddressBytes, 10000)
+	//txHash, err := testOntSdk.Native.LockProxy.Lock(testGasPrice, testGasLimit, nil, utils.OngContractAddress, testDefAcc, 0, toAddressBytes, 10000)
 	if err != nil {
 		t.Errorf("NewTransferTransaction error:%s", err)
 		return
@@ -157,10 +161,8 @@ func TestOnt_Lock(t *testing.T) {
 
 func TestOnt_BindProxy(t *testing.T) {
 	Init()
-	testOntSdk := NewOntologySdk()
-	testOntSdk.NewRpcClient().SetAddress(testNetUrl)
 	pks, sgners := openWalletForBind()
-	txHash, err := testOntSdk.Native.OntLock.BindProxyHash(testGasPrice, testGasLimit, 0, mcutils.OntLockProxyContractAddress[:], pks, sgners)
+	txHash, err := testOntSdk.Native.LockProxy.BindProxyHash(testGasPrice, testGasLimit, nil, 0, mcutils.LockProxyContractAddress[:], pks, sgners)
 	if err != nil {
 		t.Errorf("BindProxyHash error:%s", err)
 		return
@@ -181,50 +183,71 @@ func TestOnt_BindProxy(t *testing.T) {
 
 }
 
-func Test_GetBindProxy(t *testing.T) {
+func Test_GetProxyHash(t *testing.T) {
 	Init()
-	toChainId := 0
-	bindProxy, err := getBindProxyHashFromStorage(uint64(toChainId))
-	if err != nil && bindProxy != "" {
+	var toChainId uint64 = 0
+	bindProxyHash, err := testOntSdk.Native.LockProxy.GetProxyHash(toChainId)
+	if err != nil {
 		t.Errorf("Cannot get bind asset hash, err:%s", err)
 	}
-	fmt.Printf("GetBindProxyHash(%d) = %s\n", toChainId, bindProxy)
+	fmt.Printf("GetBindProxyHash(%d) = %s\n", toChainId, hex.EncodeToString(bindProxyHash[:]))
 }
 
 func TestOnt_BindAsset(t *testing.T) {
 	Init()
-	testOntSdk := NewOntologySdk()
-	testOntSdk.NewRpcClient().SetAddress(testNetUrl)
 	pks, sgners := openWalletForBind()
-	txHash, err := testOntSdk.Native.OntLock.BindAssetHash(testGasPrice, testGasLimit, ONT_CONTRACT_ADDRESS, 0, mcutils.OntContractAddress[:], pks, sgners)
+	txHash, err := testOntSdk.Native.LockProxy.BindAssetHash(testGasPrice, testGasLimit, nil, ONT_CONTRACT_ADDRESS, 0, mcutils.OntContractAddress[:], big.NewInt(0).SetUint64(constants.ONT_TOTAL_SUPPLY), false, pks, sgners)
 	if err != nil {
 		t.Errorf("BindAssetHash error:%s", err)
 		return
 	}
 	testOntSdk.WaitForGenerateBlock(30*time.Second, 1)
-	evts, err := testOntSdk.GetSmartContractEvent(txHash.ToHexString())
+	printSmartContractEventByHash(t, testOntSdk, txHash)
+
+	txHash, err = testOntSdk.Native.LockProxy.BindAssetHash(testGasPrice, testGasLimit, nil, ONG_CONTRACT_ADDRESS, 0, mcutils.OngContractAddress[:], big.NewInt(0).SetUint64(constants.ONG_TOTAL_SUPPLY), false, pks, sgners)
 	if err != nil {
-		t.Errorf("GetSmartContractEvent error:%s", err)
+		t.Errorf("BindAssetHash error:%s", err)
 		return
 	}
-	fmt.Printf("TxHash:%s\n", txHash.ToHexString())
-	fmt.Printf("State:%d\n", evts.State)
-	fmt.Printf("GasConsume:%d\n", evts.GasConsumed)
-	for _, notify := range evts.Notify {
-		fmt.Printf("ContractAddress:%s\n", notify.ContractAddress)
-		fmt.Printf("States:%+v\n", notify.States)
-	}
+	testOntSdk.WaitForGenerateBlock(30*time.Second, 1)
+	printSmartContractEventByHash(t, testOntSdk, txHash)
+
 }
 
-func Test_GetBindAsset(t *testing.T) {
+func Test_GetAssetHash(t *testing.T) {
 	Init()
-	sourceAssetHash := ONT_CONTRACT_ADDRESS
-	toChainId := 0
-	bindProxy, err := getBindAssetHashFromStorage(sourceAssetHash, uint64(toChainId))
-	if err != nil && bindProxy != "" {
+	//sourceAssetHash := ONT_CONTRACT_ADDRESS
+	sourceAssetHash := ONG_CONTRACT_ADDRESS
+	var toChainId uint64 = 0
+	bindAssetHash, err := testOntSdk.Native.LockProxy.GetAssetHash(sourceAssetHash, toChainId)
+	if err != nil {
 		t.Errorf("Cannot get bind asset hash, err:%s", err)
 	}
-	fmt.Printf("GetBindAssetHash(%s, %d) = %s\n", hex.EncodeToString(sourceAssetHash[:]), toChainId, bindProxy)
+	fmt.Printf("GetBindAssetHash(%s, %d) = %s\n", hex.EncodeToString(sourceAssetHash[:]), toChainId, hex.EncodeToString(bindAssetHash[:]))
+}
+
+func Test_GetCrossedAmount(t *testing.T) {
+	Init()
+	//sourceAssetHash := ONT_CONTRACT_ADDRESS
+	sourceAssetHash := ONG_CONTRACT_ADDRESS
+	var toChainId uint64 = 0
+	crossedAmount, err := testOntSdk.Native.LockProxy.GetCrossedAmount(sourceAssetHash, toChainId)
+	if err != nil {
+		t.Errorf("Cannot get bind asset hash, err:%s", err)
+	}
+	fmt.Printf("GetCrossedAmount(%s, %d) = %d\n", hex.EncodeToString(sourceAssetHash[:]), toChainId, crossedAmount)
+}
+
+func Test_GetCrossedLimit(t *testing.T) {
+	Init()
+	//sourceAssetHash := ONT_CONTRACT_ADDRESS
+	sourceAssetHash := ONG_CONTRACT_ADDRESS
+	var toChainId uint64 = 0
+	crossedLimit, err := testOntSdk.Native.LockProxy.GetCrossedLimit(sourceAssetHash, toChainId)
+	if err != nil {
+		t.Errorf("Cannot get bind asset hash, err:%s", err)
+	}
+	fmt.Printf("GetCrossedLimit(%s, %d) = %d\n", hex.EncodeToString(sourceAssetHash[:]), toChainId, crossedLimit)
 }
 
 func Test_GetSmartContractEvent(t *testing.T) {
@@ -271,36 +294,21 @@ func openWalletForBind() (pubKeys []keypair.PublicKey, singers []*Account) {
 		}
 		pks = append(pks, testDefAcc.PublicKey)
 		accounts = append(accounts, testDefAcc)
-		//fmt.Printf("pk index:%d,  is %v\n", i, pks[i])
-		//fmt.Printf("accounts index:%d, is %v\n", i, accounts[i].Address.ToBase58())
 	}
 	return pks, accounts
 
 }
-
-func getBindProxyHashFromStorage(toChainId uint64) (string, error) {
-	bs := make([]byte, 0)
-	bs = append(bs, []byte(olp.BIND_PROXY_NAME)...)
-	chainIdBytes, _ := utils.GetUint64Bytes(toChainId)
-	bs = append(bs, chainIdBytes...)
-	proxyStorage, _ := testOntSdk.GetStorage(ONTLOCK_CONTRACT_ADDRESS.ToHexString(), bs)
-	ts, err := serialization.ReadVarBytes(bytes.NewBuffer(proxyStorage))
+func printSmartContractEventByHash(t *testing.T, sdk *OntologySdk, txHash common.Uint256) {
+	evts, err := sdk.GetSmartContractEvent(txHash.ToHexString())
 	if err != nil {
-		return "", fmt.Errorf("readVarBytes error:%s", err)
+		t.Errorf("GetSmartContractEvent error:%s", err)
+		return
 	}
-	return hex.EncodeToString(ts), nil
-}
-
-func getBindAssetHashFromStorage(assetHash common.Address, toChainId uint64) (string, error) {
-	bs := make([]byte, 0)
-	bs = append(bs, []byte(olp.BIND_ASSET_NAME)...)
-	bs = append(bs, assetHash[:]...)
-	chainIdBytes, _ := utils.GetUint64Bytes(toChainId)
-	bs = append(bs, chainIdBytes...)
-	assetStorage, _ := testOntSdk.GetStorage(ONTLOCK_CONTRACT_ADDRESS.ToHexString(), bs)
-	ts, err := serialization.ReadVarBytes(bytes.NewBuffer(assetStorage))
-	if err != nil {
-		return "", fmt.Errorf("readVarBytes error:%s", err)
+	fmt.Printf("TxHash:%s\n", txHash.ToHexString())
+	fmt.Printf("State:%d\n", evts.State)
+	fmt.Printf("GasConsume:%d\n", evts.GasConsumed)
+	for _, notify := range evts.Notify {
+		fmt.Printf("ContractAddress:%s\n", notify.ContractAddress)
+		fmt.Printf("States:%+v\n", notify.States)
 	}
-	return hex.EncodeToString(ts), nil
 }

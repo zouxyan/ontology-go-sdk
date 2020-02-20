@@ -28,9 +28,10 @@ import (
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/core/types"
 	cutils "github.com/ontio/ontology/core/utils"
-	ontlock "github.com/ontio/ontology/smartcontract/service/native/cross_chain/ont_lock_proxy"
+	"github.com/ontio/ontology/smartcontract/service/native/cross_chain/lock_proxy"
 	"github.com/ontio/ontology/smartcontract/service/native/global_params"
 	"github.com/ontio/ontology/smartcontract/service/native/ont"
+	"math/big"
 )
 
 var (
@@ -40,7 +41,7 @@ var (
 	GLOABL_PARAMS_CONTRACT_ADDRESS, _ = utils.AddressFromHexString("0400000000000000000000000000000000000000")
 	AUTH_CONTRACT_ADDRESS, _          = utils.AddressFromHexString("0600000000000000000000000000000000000000")
 	GOVERNANCE_CONTRACT_ADDRESS, _    = utils.AddressFromHexString("0700000000000000000000000000000000000000")
-	ONTLOCK_CONTRACT_ADDRESS, _       = utils.AddressFromHexString("0a00000000000000000000000000000000000000")
+	LOCKPROXY_CONTRACT_ADDRESS, _     = utils.AddressFromHexString("0a00000000000000000000000000000000000000")
 )
 
 var (
@@ -62,7 +63,7 @@ type NativeContract struct {
 	OntId        *OntId
 	GlobalParams *GlobalParam
 	Auth         *Auth
-	OntLock      *OntLock
+	LockProxy    *LockProxy
 }
 
 func newNativeContract(ontSdk *OntologySdk) *NativeContract {
@@ -72,7 +73,7 @@ func newNativeContract(ontSdk *OntologySdk) *NativeContract {
 	native.OntId = &OntId{native: native, ontSdk: ontSdk}
 	native.GlobalParams = &GlobalParam{native: native, ontSdk: ontSdk}
 	native.Auth = &Auth{native: native, ontSdk: ontSdk}
-	native.OntLock = &OntLock{native: native, ontSdk: ontSdk}
+	native.LockProxy = &LockProxy{native: native, ontSdk: ontSdk}
 	return native
 }
 
@@ -272,7 +273,7 @@ func (this *Ont) Approve(gasPrice, gasLimit uint64, payer *Account, from *Accoun
 	return this.ontSdk.SendTransaction(tx)
 }
 
-func (this *OntLock) Allowance(from, to common.Address) (uint64, error) {
+func (this *LockProxy) Allowance(from, to common.Address) (uint64, error) {
 	type allowanceStruct struct {
 		From common.Address
 		To   common.Address
@@ -1571,50 +1572,31 @@ func (this *Auth) VerifyToken(gasPrice, gasLimit uint64, payer, signer *Account,
 	return this.ontSdk.SendTransaction(tx)
 }
 
-type OntLock struct {
+type LockProxy struct {
 	ontSdk *OntologySdk
 	native *NativeContract
 }
 
-func (this *OntLock) BindProxyHash(gasPrice, gasLimit uint64, targetChainId uint64, targetHash []byte, pubKeys []keypair.PublicKey, singers []*Account) (common.Uint256, error) {
+func (this *LockProxy) BindProxyHash(gasPrice, gasLimit uint64, payer *Account, targetChainId uint64, targetHash []byte, pubKeys []keypair.PublicKey, singers []*Account) (common.Uint256, error) {
 
-	bindParam := &ontlock.BindProxyParam{TargetChainId: targetChainId, TargetHash: targetHash}
+	bindParam := &lock_proxy.BindProxyParam{TargetChainId: targetChainId, TargetHash: targetHash}
 	tx, err := this.native.NewNativeInvokeTransaction(
 		gasPrice,
 		gasLimit,
 		ONT_CONTRACT_VERSION,
-		ONTLOCK_CONTRACT_ADDRESS,
-		ontlock.BIND_PROXY_NAME,
+		LOCKPROXY_CONTRACT_ADDRESS,
+		lock_proxy.BIND_PROXY_NAME,
 		[]interface{}{bindParam},
 	)
 	if err != nil {
 		return common.UINT256_EMPTY, err
 	}
-	fmt.Printf("len of singers are %d\n", len(singers))
-	fmt.Printf("accounts index 6 is %v\n", singers[6].Address.ToBase58())
-	for i, singer := range singers {
-		err = this.ontSdk.MultiSignToTransaction(tx, uint16((5*len(pubKeys)+6)/7), pubKeys, singer)
+	if payer != nil {
+		this.ontSdk.SetPayer(tx, payer.Address)
+		err = this.ontSdk.SignToTransaction(tx, payer)
 		if err != nil {
 			return common.UINT256_EMPTY, err
 		}
-		fmt.Printf("address index:%d,  is %v\n", i, singer.Address.ToBase58())
-	}
-	return this.ontSdk.SendTransaction(tx)
-}
-
-func (this *OntLock) BindAssetHash(gasPrice, gasLimit uint64, sourceAssetHash common.Address, targetChainId uint64, targetAssetHash []byte, pubKeys []keypair.PublicKey, singers []*Account) (common.Uint256, error) {
-
-	bindParam := &ontlock.BindAssetParam{SourceAssetHash: sourceAssetHash, TargetChainId: targetChainId, TargetAssetHash: targetAssetHash}
-	tx, err := this.native.NewNativeInvokeTransaction(
-		gasPrice,
-		gasLimit,
-		ONT_CONTRACT_VERSION,
-		ONTLOCK_CONTRACT_ADDRESS,
-		ontlock.BIND_ASSET_NAME,
-		[]interface{}{bindParam},
-	)
-	if err != nil {
-		return common.UINT256_EMPTY, err
 	}
 	for _, singer := range singers {
 		err = this.ontSdk.MultiSignToTransaction(tx, uint16((5*len(pubKeys)+6)/7), pubKeys, singer)
@@ -1625,8 +1607,38 @@ func (this *OntLock) BindAssetHash(gasPrice, gasLimit uint64, sourceAssetHash co
 	return this.ontSdk.SendTransaction(tx)
 }
 
-func (this *OntLock) Lock(gasPrice, gasLimit uint64, payer *Account, sourceAssetHash common.Address, from *Account, toChainID uint64, toAddress []byte, amount uint64) (common.Uint256, error) {
-	lockParam := &ontlock.LockParam{
+func (this *LockProxy) BindAssetHash(gasPrice, gasLimit uint64, payer *Account, sourceAssetHash common.Address, targetChainId uint64, targetAssetHash []byte, assetLimit *big.Int, isTargetChainAsset bool, pubKeys []keypair.PublicKey, singers []*Account) (common.Uint256, error) {
+
+	bindParam := &lock_proxy.BindAssetParam{SourceAssetHash: sourceAssetHash, TargetChainId: targetChainId, TargetAssetHash: targetAssetHash, Limit: assetLimit, IsTargetChainAsset: isTargetChainAsset}
+	tx, err := this.native.NewNativeInvokeTransaction(
+		gasPrice,
+		gasLimit,
+		ONT_CONTRACT_VERSION,
+		LOCKPROXY_CONTRACT_ADDRESS,
+		lock_proxy.BIND_ASSET_NAME,
+		[]interface{}{bindParam},
+	)
+	if err != nil {
+		return common.UINT256_EMPTY, err
+	}
+	if payer != nil {
+		this.ontSdk.SetPayer(tx, payer.Address)
+		err = this.ontSdk.SignToTransaction(tx, payer)
+		if err != nil {
+			return common.UINT256_EMPTY, err
+		}
+	}
+	for _, singer := range singers {
+		err = this.ontSdk.MultiSignToTransaction(tx, uint16((5*len(pubKeys)+6)/7), pubKeys, singer)
+		if err != nil {
+			return common.UINT256_EMPTY, err
+		}
+	}
+	return this.ontSdk.SendTransaction(tx)
+}
+
+func (this *LockProxy) Lock(gasPrice, gasLimit uint64, payer *Account, sourceAssetHash common.Address, from *Account, toChainID uint64, toAddress []byte, amount uint64) (common.Uint256, error) {
+	lockParam := &lock_proxy.LockParam{
 		SourceAssetHash: sourceAssetHash,
 		FromAddress:     from.Address,
 		ToChainID:       toChainID,
@@ -1637,8 +1649,8 @@ func (this *OntLock) Lock(gasPrice, gasLimit uint64, payer *Account, sourceAsset
 		gasPrice,
 		gasLimit,
 		ONT_CONTRACT_VERSION,
-		ONTLOCK_CONTRACT_ADDRESS,
-		ontlock.LOCK_NAME,
+		LOCKPROXY_CONTRACT_ADDRESS,
+		lock_proxy.LOCK_NAME,
 		[]interface{}{lockParam},
 	)
 	if err != nil {
@@ -1656,4 +1668,72 @@ func (this *OntLock) Lock(gasPrice, gasLimit uint64, payer *Account, sourceAsset
 		return common.UINT256_EMPTY, err
 	}
 	return this.ontSdk.SendTransaction(tx)
+}
+
+func (this *LockProxy) GetProxyHash(toChainId uint64) ([]byte, error) {
+	preResult, err := this.native.PreExecInvokeNativeContract(
+		LOCKPROXY_CONTRACT_ADDRESS,
+		ONT_CONTRACT_VERSION,
+		lock_proxy.GET_PROXY_HASH_NAME,
+		[]interface{}{toChainId},
+	)
+	if err != nil {
+		return nil, err
+	}
+	proxyHash, err := preResult.Result.ToByteArray()
+	if err != nil {
+		return nil, err
+	}
+	return proxyHash, nil
+}
+
+type AssetHashStruct struct {
+	SourceAssetAddress common.Address
+	ToChainId          uint64
+}
+
+func (this *LockProxy) GetAssetHash(sourceAssetAddress common.Address, toChainId uint64) ([]byte, error) {
+
+	preResult, err := this.native.PreExecInvokeNativeContract(
+		LOCKPROXY_CONTRACT_ADDRESS,
+		ONT_CONTRACT_VERSION,
+		lock_proxy.GET_ASSET_HASH_NAME,
+		[]interface{}{&AssetHashStruct{sourceAssetAddress, toChainId}},
+	)
+	if err != nil {
+		return nil, err
+	}
+	assetHash, err := preResult.Result.ToByteArray()
+	if err != nil {
+		return nil, err
+	}
+	return assetHash, nil
+}
+
+func (this *LockProxy) GetCrossedAmount(sourceAssetAddress common.Address, toChainId uint64) (uint64, error) {
+	preResult, err := this.native.PreExecInvokeNativeContract(
+		LOCKPROXY_CONTRACT_ADDRESS,
+		ONT_CONTRACT_VERSION,
+		lock_proxy.GET_CROSSED_AMOUNT_NAME,
+		[]interface{}{&AssetHashStruct{sourceAssetAddress, toChainId}},
+	)
+	if err != nil {
+		return 0, err
+	}
+	crossedAmount, err := preResult.Result.ToInteger()
+	return crossedAmount.Uint64(), nil
+}
+
+func (this *LockProxy) GetCrossedLimit(sourceAssetAddress common.Address, toChainId uint64) (uint64, error) {
+	preResult, err := this.native.PreExecInvokeNativeContract(
+		LOCKPROXY_CONTRACT_ADDRESS,
+		ONT_CONTRACT_VERSION,
+		lock_proxy.GET_CROSSED_LIMIT_NAME,
+		[]interface{}{&AssetHashStruct{sourceAssetAddress, toChainId}},
+	)
+	if err != nil {
+		return 0, err
+	}
+	crossedAmount, err := preResult.Result.ToInteger()
+	return crossedAmount.Uint64(), nil
 }
